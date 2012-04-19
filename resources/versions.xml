@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<versions>
+    <version type="alpha"><![CDATA[1.2.1]]></version>
+    <version type="alpha"><![CDATA[1.2.2]]></version>
+    <version type="beta"><![CDATA[1.2.3]]></version>
+    <version type="beta"><![CDATA[1.2.4]]></version>
+    <version type="release"><![CDATA[1.3]]></version>
+    <latestRelease>1.3</latestRelease>
+    <date>2012-04-09</date>
+</versions>

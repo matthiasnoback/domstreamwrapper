@@ -1,0 +1,7 @@
+This repository accompanies my blog posts about creating a stream wrapper for PHP.
+
+See my blog: http://php-and-symfony.matthiasnoback.nl
+
+I don't think it should really be used for DOM manipulation, but it is just the result of a little playing with PHP's stream wrapping functionality.
+
+Enjoy!
