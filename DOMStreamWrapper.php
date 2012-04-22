@@ -82,7 +82,6 @@ class DOMStreamWrapper
             return $result;
         }
         catch (\Exception $e) {
-            trigger_error($e->getMessage(), E_USER_WARNING);
             return false;
         }
     }
@@ -129,7 +128,6 @@ class DOMStreamWrapper
             return true;
         }
         catch (\Exception $e) {
-            trigger_error($e->getMessage(), E_USER_WARNING);
             return false;
         }
     }
@@ -274,7 +272,6 @@ class DOMStreamWrapper
 
             if ($this->shouldCreateNode()) {
                 $domNode = $this->attemptToCreateNode($this->domDocument, $xpath, $xpathQuery);
-                $this->saveFile();
             }
             else {
                 throw new \InvalidArgumentException(sprintf('Node not found using XPath query: ', $xpathQuery));
