@@ -14,7 +14,13 @@ class DOMStreamWrapper
     // collected
     private $options;
     private $sourcePath;
+    /* @var \DOMDocument */
+    private $domDocument;
+    /* @var \DOMNode */
     private $domNode;
+
+    private $length;
+    private $position;
 
     /**
      * The given path should be something like:
@@ -33,9 +39,15 @@ class DOMStreamWrapper
         try {
             $this->path = $path;
 
-            $this->mode = $mode;
+            $this->mode = str_replace(array('b', 't'), '', $mode); // remove binary/text option
 
-            $this->findDOMNode();
+            $this->domNode = $this->findDOMNode();
+
+            if ($this->shouldTruncate()) {
+                $this->domNode->nodeValue = '';
+            }
+
+            $this->position = $this->getInitialPosition();
 
             return true;
         }
@@ -45,6 +57,106 @@ class DOMStreamWrapper
             }
 
             return false;
+        }
+    }
+
+    public function stream_eof()
+    {
+        return !($this->position < $this->getLength());
+    }
+
+    public function stream_read($count)
+    {
+        try {
+            $maxReadLength = $this->getLength() - $this->position;
+            $readLength = min($count, $maxReadLength);
+
+            if (0 === $readLength) {
+                throw new \RuntimeException('Nothing to read');
+            }
+
+            $result = substr($this->domNode->nodeValue, $this->position, $readLength);
+
+            $this->position += $readLength;
+
+            return $result;
+        }
+        catch (\Exception $e) {
+            trigger_error($e->getMessage(), E_USER_WARNING);
+            return false;
+        }
+    }
+
+    public function stream_tell()
+    {
+        return $this->position;
+    }
+
+    public function stream_seek($offset, $whence)
+    {
+        try {
+            if (SEEK_CUR === $whence) {
+                $newPosition = $this->position + $offset;
+            }
+            else if (SEEK_END === $whence) {
+                if ($offset >= 0) {
+                    throw new \InvalidArgumentException('Offset should be a negative value');
+                }
+
+                $newPosition = $this->getLength() + $offset;
+            }
+            else if (SEEK_SET === $whence) {
+                if ($offset < 0) {
+                    throw new \InvalidArgumentException('Offset should be a positive value');
+                }
+
+                $newPosition = $offset;
+            }
+            else {
+                throw new \InvalidArgumentException('Unknown "whence"');
+            }
+
+            if ($newPosition < 0) {
+                throw new \OutOfBoundsException('The new position is a negative value');
+            }
+
+            if ($newPosition >= $this->getLength()) {
+                throw new \OutOfBoundsException('The new position is beyond the length of the stream');
+            }
+
+            $this->position = $newPosition;
+
+            return true;
+        }
+        catch (\Exception $e) {
+            trigger_error($e->getMessage(), E_USER_WARNING);
+            return false;
+        }
+    }
+
+    private function getLength()
+    {
+        return strlen($this->domNode->nodeValue);
+    }
+
+    private function getInitialPosition()
+    {
+        switch ($this->getMode()) {
+            case 'r':
+            case 'r+':
+            case 'w':
+            case 'w+':
+            case 'x':
+            case 'x+':
+            case 'x':
+            case 'c':
+            case 'c+':
+                return 0;
+            case 'a':
+            case 'a+':
+                return $this->getLength();
+            default:
+                throw new \InvalidArgumentException('Invalid mode');
         }
     }
 
@@ -144,23 +256,75 @@ class DOMStreamWrapper
      */
     private function findDOMNode()
     {
-        $domDocument = new \DOMDocument(
+        $this->domDocument = new \DOMDocument(
             $this->getOption('version', '1.0'),
             $this->getOption('encoding', 'UTF-8')
         );
-        $domDocument->load($this->getSourcePath());
+        $this->domDocument->formatOutput = $this->getOption('format_output', true);
+        $this->domDocument->load($this->getSourcePath());
 
         $xpathQuery = parse_url($this->path, PHP_URL_PATH);
         if (false === $xpathQuery) {
             throw new \InvalidArgumentException('Could not determine the XPath query');
         }
 
-        $xpath = new \DOMXPath($domDocument);
+        $xpath = new \DOMXPath($this->domDocument);
         $domNodeList = $xpath->query($xpathQuery);
         if (0 === $domNodeList->length) {
-            throw new \InvalidArgumentException(sprintf('Node not found using XPath query: ', $xpathQuery));
+
+            if ($this->shouldCreateNode()) {
+                $domNode = $this->attemptToCreateNode($this->domDocument, $xpath, $xpathQuery);
+                $this->saveFile();
+            }
+            else {
+                throw new \InvalidArgumentException(sprintf('Node not found using XPath query: ', $xpathQuery));
+            }
+        }
+        else {
+            $domNode = $domNodeList->item(0);
         }
 
-        $this->domNode = $domNodeList->item(0);
+        return $domNode;
+    }
+
+    private function shouldCreateNode()
+    {
+        return !in_array($this->getMode(), array('r', 'r+'));
+    }
+
+    private function shouldTruncate()
+    {
+        return in_array($this->getMode(), array('w', 'w+'));
+    }
+
+    private function attemptToCreateNode(\DOMDocument $domDocument, \DOMXPath $xpath, $xpathQuery)
+    {
+        if (!preg_match('/^(\/\w+)+$/', $xpathQuery)) {
+            throw new \InvalidArgumentException('Your XPath query is too fancy for finding out how to create a node for it');
+        }
+
+        $nodeNames = explode('/', ltrim($xpathQuery, '/'));
+
+        $nodesExistUntill = '/';
+        $currentNode = $domDocument;
+        foreach ($nodeNames as $nodeName) {
+            $nodesExistUntill .= $nodeName;
+            $nodeList = $xpath->query($nodesExistUntill);
+            if (0 === $nodeList->length) {
+                $node = $domDocument->createElement($nodeName);
+                $currentNode->appendChild($node);
+                $currentNode = $node;
+            }
+            else {
+                $currentNode = $nodeList->item(0);
+            }
+        }
+
+        return $currentNode;
+    }
+
+    private function saveFile()
+    {
+        $this->domDocument->save($this->getSourcePath());
     }
 }

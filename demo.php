@@ -17,6 +17,15 @@ $context = stream_context_create(array(
     ),
 ));
 
-$handle = fopen('dom://versions/versions/latestRelease', 'r', false, $context);
+$handle = fopen("dom://versions/versions/version[@type='beta']", 'r+', false, $context);
 
-var_dump($handle);
+if (false === $handle) {
+    throw new \RuntimeException('Could not open DOM node');
+}
+
+echo fread($handle, 1024) . "\n"; // 1.2.3
+
+fseek($handle, 3, SEEK_SET);
+
+echo fread($handle, 1024) . "\n"; // .3
+
